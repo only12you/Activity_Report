@@ -1,4 +1,4 @@
-const C='activity-app-v1',A=['./', 'index.html', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'css/app.css', 'js/01-types.js', 'js/02-store.js', 'js/03-forms-core.js', 'js/04-icons.js', 'js/05-forms-std.js', 'js/06-decorate.js', 'js/07-app.js', 'js/08-material.js', 'js/09-pwa.js'];
+const C='activity-app-v2',A=['./', 'index.html', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'css/app.css', 'js/01-types.js', 'js/02-store.js', 'js/03-forms-core.js', 'js/04-icons.js', 'js/05-forms-std.js', 'js/06-decorate.js', 'js/07-app.js', 'js/08-material.js', 'js/09-pwa.js'];
 self.oninstall=e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>Promise.all(A.map(u=>c.add(new Request(u,{cache:'reload'})).catch(()=>{})))))};
 self.onactivate=e=>e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!=C).map(x=>caches.delete(x)))).then(()=>self.clients.claim()));
 self.onfetch=e=>{if(e.request.method!='GET')return;e.respondWith(fetch(e.request).then(r=>{if(r.ok&&new URL(e.request.url).origin==location.origin){const c=r.clone();caches.open(C).then(x=>x.put(e.request,c))}return r}).catch(()=>caches.match(e.request)))};
