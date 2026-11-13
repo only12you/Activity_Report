@@ -198,14 +198,25 @@
     const g = c.getContext('2d'); g.drawImage(im, 0, 0, c.width, c.height); const d = g.getImageData(0, 0, c.width, c.height), p = d.data; let mn = 255, mx = 0;
     for (let i = 0; i < p.length; i += 4) { const y = (p[i] * .3 + p[i + 1] * .59 + p[i + 2] * .11) | 0; p[i] = p[i + 1] = p[i + 2] = y; if (y < mn) mn = y; if (y > mx) mx = y; }
     const sc = 255 / Math.max(40, mx - mn); for (let i = 0; i < p.length; i += 4) { const y = Math.max(0, Math.min(255, (p[i] - mn) * sc)); p[i] = p[i + 1] = p[i + 2] = y; }
+    { const W = c.width, H = c.height, M = Math.max(40, Math.round(Math.min(W, H) * .08)), kill = new Uint8Array(W * H), dk = (x, y) => p[(y * W + x) * 4] < 140;
+      for (let y = 0; y < H; y++) { let x = 0; while (x < W) { if (dk(x, y)) { const s = x; while (x < W && dk(x, y)) x++; if (x - s >= M) for (let q = s; q < x; q++) kill[y * W + q] = 1; } else x++; } }
+      for (let x = 0; x < W; x++) { let y = 0; while (y < H) { if (dk(x, y)) { const s = y; while (y < H && dk(x, y)) y++; if (y - s >= M) for (let q = s; q < y; q++) kill[q * W + x] = 1; } else y++; } }
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (kill[y * W + x]) for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < W && Y < H) { const i = (Y * W + X) * 4; p[i] = p[i + 1] = p[i + 2] = 255; } } }
     g.putImageData(d, 0, 0); ok(c); }; im.onerror = () => no(new Error('사진을 열지 못했어요.')); im.src = url; });
   let OCRW = null;
   async function ocrSign(url) {
-    if (!window.Tesseract) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'; s.onload = ok; s.onerror = () => no(new Error('글자 읽기 도구를 불러오지 못했어요 (인터넷 연결이 필요해요).')); document.head.append(s); });
-    if (!OCRW) OCRW = await Promise.race([window.Tesseract.createWorker('kor+eng'), new Promise((_, no) => setTimeout(() => no(new Error('언어 데이터를 내려받지 못했어요 (인터넷 연결 확인).')), 120000))]);
-    const c = await ocrPrep(url), r = await OCRW.recognize(c), res = parseSign(r.data.text);
-    let pp = {}; try { pp = parsePos(r.data.words); } catch (e) {}
-    Object.keys(pp).forEach(k => { if (pp[k]) res.ov[k] = pp[k]; });
+    const U = p => new URL(p, location.href).href;
+    const loadJs = src => new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => no(new Error('load')); document.head.append(s); });
+    if (!window.Tesseract) { try { await loadJs(U('vendor/ocr/tesseract.min.js')); } catch (e) { try { await loadJs('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'); } catch (e2) { throw new Error('글자 읽기 도구를 불러오지 못했어요 (vendor/ocr 폴더가 함께 올라갔는지 확인하세요).'); } } }
+    if (!OCRW) OCRW = await Promise.race([window.Tesseract.createWorker('kor+eng', 1, { workerPath: U('vendor/ocr/worker.min.js'), corePath: U('vendor/ocr/core'), langPath: U('vendor/ocr/lang'), gzip: true }), new Promise((_, no) => setTimeout(() => no(new Error('글자 읽기 준비가 오래 걸려요 (vendor/ocr/lang 파일 확인).')), 120000))]);
+    const c = await ocrPrep(url);
+    const run = async psm => { try { await OCRW.setParameters({ tessedit_pageseg_mode: psm, user_defined_dpi: '300', preserve_interword_spaces: '1' }); } catch (e) {}
+      const r = await OCRW.recognize(c), res = parseSign(r.data.text); let pp = {}; try { pp = parsePos(r.data.words); } catch (e) {}
+      const signStyle = ['pname', 'addr', 'dev', 'des', 'bld', 'area', 'use'].filter(k => res.ov[k]).length >= 4;   // '라벨 값' 한 줄 형태(공사 개요판)면 글자 줄 해석을 우선
+      Object.keys(pp).forEach(k => { if (pp[k] && !(signStyle && res.ov[k])) res.ov[k] = pp[k]; }); return { r, res }; };
+    let best = await run('4');
+    if (Object.keys(best.res.ov).length < 4) { const b2 = await run('11'); if (Object.keys(b2.res.ov).length > Object.keys(best.res.ov).length) best = b2; }
+    const r = best.r, res = best.res;
     if (res.ov.pname) res.h.site = res.ov.pname;
     if (!Object.keys(res.ov).length) throw new Error('사진에서 항목을 찾지 못했어요. 읽힌 글자: “' + String(r.data.text || '').replace(/\s+/g, ' ').slice(0, 120) + '” — 표 전체가 화면에 반듯하게 꽉 차도록 다시 찍어 보세요.');
     return res;
